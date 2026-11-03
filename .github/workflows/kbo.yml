@@ -1,0 +1,87 @@
+name: KBO-gegevens bijwerken
+
+on:
+  schedule:
+    # GitHub rekent in UTC. 6u30 in Brussel = 4u30 UTC (zomeruur) of 5u30 UTC (winteruur).
+    - cron: "30 4 * * *"
+    - cron: "30 5 * * *"
+  workflow_dispatch:        # knop "Run workflow" om meteen te draaien
+  push:
+    branches: [main]
+    paths: [index.html]     # nieuwe versie van de tool meteen publiceren
+
+permissions:
+  contents: write           # data-branch bijwerken
+  pages: write
+  id-token: write
+
+concurrency:
+  group: kbo
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Enkel de run van 6u30 Belgische tijd
+        id: when
+        run: |
+          off=$(TZ=Europe/Brussels date +%z)
+          want="30 5 * * *"; [ "$off" = "+0200" ] && want="30 4 * * *"
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" != "$want" ]; then
+            echo "skip=1" >> "$GITHUB_OUTPUT"; echo "Niet het juiste uur (offset $off), overslaan."
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.when.outputs.skip != '1'
+
+      - name: Vorig databestand ophalen (cache websitezoektocht)
+        if: steps.when.outputs.skip != '1'
+        run: |
+          mkdir -p site
+          if git fetch --depth=1 origin data 2>/dev/null; then
+            git show FETCH_HEAD:kbo-data.json > site/kbo-data.json || true
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.when.outputs.skip != '1'
+        with: { python-version: "3.12" }
+
+      - name: KBO-job
+        if: steps.when.outputs.skip != '1' && github.event_name != 'push'
+        env:
+          KBO_USER: ${{ secrets.KBO_USER }}
+          KBO_PASS: ${{ secrets.KBO_PASS }}
+        run: python3 job/kbo_job.py --out site
+
+      - name: Tool klaarzetten
+        if: steps.when.outputs.skip != '1'
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr 'A-Z' 'a-z'); repo="${{ github.event.repository.name }}"
+          sed "s#https://raw.githubusercontent.com/OWNER/REPO/main/kbo-data.json#https://$owner.github.io/$repo/kbo-data.json#" index.html > site/index.html
+          if [ -f site/kbo-data.json ]; then
+            [ -f site/kbo-data.js ] || { printf 'window.VAREL_KBO_DATA='; cat site/kbo-data.json; echo ';'; } > site/kbo-data.js
+          else
+            echo "Nog geen databestand: draai de workflow eens met 'Run workflow'."
+          fi
+
+      - name: Databestand bewaren op branch 'data'
+        if: steps.when.outputs.skip != '1' && github.event_name != 'push'
+        run: |
+          cd site
+          git init -q -b data && git config user.name "varel-kbo-job" && git config user.email "actions@users.noreply.github.com"
+          git add kbo-data.json && git commit -q -m "KBO-gegevens $(date +%F)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data
+          rm -rf .git
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.when.outputs.skip != '1'
+        with: { path: site }
+
+      - id: deploy
+        if: steps.when.outputs.skip != '1'
+        uses: actions/deploy-pages@v4
