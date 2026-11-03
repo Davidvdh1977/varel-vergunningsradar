@@ -712,27 +712,36 @@ function setStatus(h){ $("#status").innerHTML = h; }
 /* ================================================================== filters */
 function setOptions(sel, first, values, labels){
   const cur = sel.value;
+  if (cur && !values.includes(cur)) values = [cur, ...values];  /* huidige keuze nooit laten verdwijnen */
   sel.innerHTML = `<option value="">${first}</option>` + values.map(v => `<option value="${esc(v)}">${esc(labels ? labels[v] : v)}</option>`).join("");
-  sel.value = values.includes(cur) ? cur : "";
+  sel.value = cur;
 }
+/* elke keuzelijst telt de aanvragen die voldoen aan alle ándere filters */
 function fillFilters(){
-  setOptions($("#f-layer"), "Alle soorten", LAYERS.map(L => L.id), Object.fromEntries(LAYERS.map(L => [L.id, L.label])));
-  const provs = PROVINCES.filter(p => S.items.some(i => i.provincie === p));
-  const provLabels = Object.fromEntries(provs.map(p => [p, `${p} (${S.items.filter(i => i.provincie === p).length})`]));
-  setOptions($("#f-prov"), "Alle provincies", provs, provLabels);
+  const count = (pool, key) => { const m = new Map(); for (const it of pool) for (const v of [].concat(key(it))) if (v) m.set(v, (m.get(v) || 0) + 1); return m; };
+  const lab = (m, name) => v => `${name(v)} (${m.get(v) || 0})`;
+  const opts = (m, order) => order.filter(v => m.get(v) || 0);
+
+  const mLay = count(filtered("layer"), it => it.layers);
+  setOptions($("#f-layer"), "Alle soorten", opts(mLay, LAYERS.map(L => L.id)), Object.fromEntries(LAYERS.map(L => [L.id, lab(mLay, () => L.label)(L.id)])));
+
+  const mProv = count(filtered("prov"), it => it.provincie);
+  setOptions($("#f-prov"), "Alle provincies", opts(mProv, PROVINCES), Object.fromEntries(PROVINCES.map(p => [p, lab(mProv, x => x)(p)])));
+
   const prov = $("#f-prov").value;
-  const pool = S.items.filter(i => !prov || i.provincie === prov);
-  const gems = [...new Set(pool.map(i => i.gemeente).filter(Boolean))].sort((a,b) => a.localeCompare(b,"nl"));
-  const gemLabels = Object.fromEntries(gems.map(g => [g, `${g} (${pool.filter(i => i.gemeente === g).length})`]));
-  setOptions($("#f-gem"), prov ? `Alle gemeenten in ${prov}` : "Alle gemeenten", gems, gemLabels);
-  const pands = Object.keys(PAND).filter(k => S.items.some(i => i.pand === k));
-  const pandLabels = Object.fromEntries(pands.map(k => [k, `${PAND[k]} (${S.items.filter(i => i.pand === k).length})`]));
-  setOptions($("#f-pand"), "Alle types panden", pands, pandLabels);
+  const mGem = count(filtered("gem"), it => it.gemeente);
+  const gems = [...mGem.keys()].sort((a, b) => a.localeCompare(b, "nl"));
+  const gemAll = $("#f-gem").value && !gems.includes($("#f-gem").value) ? [$("#f-gem").value, ...gems] : gems;
+  setOptions($("#f-gem"), prov ? `Alle gemeenten in ${prov}` : "Alle gemeenten", gems, Object.fromEntries(gemAll.map(g => [g, lab(mGem, x => x)(g)])));
+
+  const mPand = count(filtered("pand"), it => it.pand);
+  setOptions($("#f-pand"), "Alle types panden", opts(mPand, Object.keys(PAND)), Object.fromEntries(Object.keys(PAND).map(k => [k, lab(mPand, x => PAND[x])(k)])));
 }
 
-function filtered(){
+function filtered(skip){
   const q = $("#q").value.trim().toLowerCase();
-  const lay = $("#f-layer").value, prov = $("#f-prov").value, gem = $("#f-gem").value, pand = $("#f-pand").value;
+  const v = (k, sel) => skip === k ? "" : $(sel).value;
+  const lay = v("layer", "#f-layer"), prov = v("prov", "#f-prov"), gem = v("gem", "#f-gem"), pand = v("pand", "#f-pand");
   const pr = $("#f-prio").value, fol = $("#f-follow").value;
   const comp = $("#f-comp").checked, onlyNew = $("#f-new").checked, onlySel = $("#f-sel").checked;
   return S.items.filter(it => {
@@ -1691,9 +1700,9 @@ document.addEventListener("visibilitychange", () => {
 
 /* ================================================================== events */
 let t;
-$("#q").addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => render({ fit:true }), 150); });
+$("#q").addEventListener("input", () => { clearTimeout(t); t = setTimeout(() => { fillFilters(); render({ fit:true }); }, 150); });
 $("#f-prov").addEventListener("change", () => { $("#f-gem").value = ""; fillFilters(); render({ fit:true }); });
-["#f-layer","#f-gem","#f-pand","#f-prio","#f-follow","#f-comp","#f-new","#f-sel"].forEach(s => $(s).addEventListener("change", () => render({ fit:true })));
+["#f-layer","#f-gem","#f-pand","#f-prio","#f-follow","#f-comp","#f-new","#f-sel"].forEach(s => $(s).addEventListener("change", () => { fillFilters(); render({ fit:true }); }));
 $("#f-period").addEventListener("change", load);
 $("#b-reload").addEventListener("click", load);
 $("#b-csv").addEventListener("click", () => exportCSV(filtered(), "overzicht"));
