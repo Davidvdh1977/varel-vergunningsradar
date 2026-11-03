@@ -8,6 +8,7 @@ SRC=$(cd "$1" && pwd)
 W=$(mktemp -d)
 cp "$REPO_DIR/index.html" "$SRC/kbo-data.json" "$SRC/kbo-data.js" "$W/"
 touch "$W/.nojekyll"
+mkdir -p "$W/.github/workflows" && cp "$REPO_DIR/.github/workflows/kbo.yml" "$W/.github/workflows/"  # start de websitezoektocht
 cd "$W"
 git init -q -b gh-pages
 git add -A
