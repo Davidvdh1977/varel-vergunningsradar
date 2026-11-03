@@ -275,7 +275,7 @@ def norm_phone(raw):
     if d.startswith("+32"): d = "0" + d[3:]
     elif d.startswith("0032"): d = "0" + d[4:]
     if d.startswith("00"): d = d[1:]
-    if not re.fullmatch(r"0[1-9]\d{7,8}", d): return None
+    if not re.fullmatch(r"0[1-9]\d{7}|04\d{8}", d): return None  # 9 cijfers vast, 10 cijfers enkel gsm (04..)
     if d.startswith("0800") or d.startswith("090") or d.startswith("070"): return None
     if len(d) == 10:  # gsm 04xx
         return f"{d[:4]} {d[4:6]} {d[6:8]} {d[8:]}"
@@ -349,7 +349,8 @@ def enrich_websites(data, prev, budget):
         old = (prev.get(k) or {}).get("webzoektocht") or {}
         try: age = (today - dt.date.fromisoformat(old.get("datum", "2000-01-01"))).days
         except ValueError: age = 999
-        if old.get("url") == url and age < WEB_RECHECK_DAYS and not (old.get("fout") or "").startswith("site onbereikbaar"):
+        stale_tel = old.get("tel") and norm_phone(old["tel"]) != old["tel"]  # strengere controle sinds de vorige run
+        if old.get("url") == url and age < WEB_RECHECK_DAYS and not stale_tel and not (old.get("fout") or "").startswith("site onbereikbaar"):
             e["webzoektocht"] = old
             if old.get("tel"): e["tel"] = old["tel"]; e["bron"]["tel"] = "website"
             continue
