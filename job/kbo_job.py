@@ -370,13 +370,32 @@ def enrich_websites(data, prev, budget):
                 if not e.get("web"): e["web"] = url; e["bron"]["web"] = "e-maildomein"
     log(f"  telefoon gevonden op {hits} websites")
 
+def write_doc(doc, out):
+    doc["metTelefoon"] = sum(1 for e in doc["bedrijven"].values() if e.get("tel"))
+    js = json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
+    with open(os.path.join(out, "kbo-data.json"), "w", encoding="utf-8") as f: f.write(js)
+    with open(os.path.join(out, "kbo-data.js"), "w", encoding="utf-8") as f: f.write("window.VAREL_KBO_DATA=" + js + ";\n")
+    return js
+
+def enrich_only(path, budget):
+    doc = json.load(open(path, encoding="utf-8"))
+    data = doc["bedrijven"]
+    prev = json.loads(json.dumps(data))
+    enrich_websites(data, prev, budget)
+    doc["websitesDoorzocht"] = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
+    write_doc(doc, os.path.dirname(os.path.abspath(path)))
+    log(f"Klaar: {doc['metTelefoon']} van {len(data)} bedrijven met telefoon")
+
 # ---------------------------------------------------------------- main
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="out")
     ap.add_argument("--zip", help="bestaande KBO Full-zip gebruiken")
     ap.add_argument("--prev", help="vorig kbo-data.json (standaard <out>/kbo-data.json)")
+    ap.add_argument("--enrich", help="enkel telefoon zoeken op websites in dit bestaande kbo-data.json")
     a = ap.parse_args()
+    if a.enrich:
+        return enrich_only(a.enrich, int(os.environ.get("WEB_LOOKUPS", 600)))
     days = int(os.environ.get("DAYS", 120)); keep_days = int(os.environ.get("KEEP_DAYS", 365))
     budget = int(os.environ.get("WEB_LOOKUPS", 600))
     os.makedirs(a.out, exist_ok=True)
@@ -423,9 +442,7 @@ def main():
         "nace": nace_desc,
         "bedrijven": data,
     }
-    js = json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
-    with open(os.path.join(a.out, "kbo-data.json"), "w", encoding="utf-8") as f: f.write(js)
-    with open(os.path.join(a.out, "kbo-data.js"), "w", encoding="utf-8") as f: f.write("window.VAREL_KBO_DATA=" + js + ";\n")
+    js = write_doc(doc, a.out)
     missing = len(found) - len(data)
     log(f"Klaar: {len(data)} bedrijven, {doc['metTelefoon']} met telefoon, {missing} niet in KBO (stopgezet of buitenlands), "
         f"{len(js)/1e6:.1f} MB")
