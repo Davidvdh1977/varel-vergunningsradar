@@ -301,6 +301,7 @@ const GEO_CONCURRENCY = 6;
    Het relatieve pad werkt op GitHub Pages, de volledige URL ook als de tool als los bestand geopend wordt. */
 const KBO_DATA_URLS = ["kbo-data.json", "https://davidvdh1977.github.io/varel-vergunningsradar/kbo-data.json"];
 const KBO_IDB = "varel-vergunningsradar-kbo";
+const TOOL_VERSION = "2026-11-03.2";
 
 const BASEMAPS = {
   grb: { url: "https://geo.api.vlaanderen.be/GRB/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=grb_bsk&STYLE=&FORMAT=image/png&TILEMATRIXSET=GoogleMapsVL&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}", attr: "GRB &copy; Digitaal Vlaanderen", maxZoom: 21 },
@@ -1319,12 +1320,13 @@ async function loadKbo(){
 function updateKboState(){
   const el = $("#kbo-state"); if (!el) return;
   const d = S.kbo;
-  if (!d){ el.innerHTML = `Geen KBO-databestand gevonden: zetel, vestigingen en contactgegevens uit de KBO worden niet getoond. <a href="#" data-kboload>KBO-bestand laden</a>`; return; }
+  if (!d){ el.innerHTML = `Geen KBO-databestand gevonden: zetel, vestigingen en contactgegevens uit de KBO worden niet getoond. <a href="#" data-kboload>KBO-bestand laden</a> · toolversie ${TOOL_VERSION}`; return; }
   const g = d.gegenereerd ? new Date(d.gegenereerd) : null;
   const old = g && (Date.now() - g) > 3 * 864e5;
   el.innerHTML = `KBO-gegevens: <b>${(d.aantal || 0).toLocaleString("nl-BE")}</b> bedrijven, waarvan ${(d.metTelefoon || 0).toLocaleString("nl-BE")} met telefoonnummer · KBO-stand ${esc(d.kboStand || "?")}`
     + (g ? ` · bijgewerkt ${g.toLocaleDateString("nl-BE", { day:"numeric", month:"long" })} om ${g.toLocaleTimeString("nl-BE", { hour:"2-digit", minute:"2-digit" })}` : "")
-    + (old ? ` <b style="color:#b65e1f">(meer dan 3 dagen oud)</b>` : "");
+    + (old ? ` <b style="color:#b65e1f">(meer dan 3 dagen oud)</b>` : "")
+    + ` · toolversie ${TOOL_VERSION}`;
 }
 const kboData = k => (k && S.kbo?.bedrijven?.[k]) || null;
 function kboFor(it){ for (const c of it.companies){ const d = kboData(c.kbo); if (d) return d; } return null; }
