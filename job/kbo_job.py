@@ -407,7 +407,14 @@ def main():
         except Exception: pass
 
     log(f"Aanvragers ophalen (laatste {days} dagen)")
-    found = wfs_kbos(days)
+    try:
+        found = wfs_kbos(days)
+    except Exception as e:
+        # storing bij Mercator: verdergaan met de bedrijven uit het vorige bestand
+        if not prev:
+            sys.exit(f"Omgevingsloket (Mercator) onbereikbaar en geen vorig bestand: {e}")
+        log(f"LET OP: Omgevingsloket (Mercator) onbereikbaar ({str(e)[:160]}). Ik ga verder met de {len(prev)} bedrijven uit het vorige bestand.")
+        found = {}
     cutoff = (dt.date.today() - dt.timedelta(days=keep_days)).isoformat()
     for k, e in prev.items():  # oudere aanvragers blijven een jaar in het bestand
         if k not in found and (e.get("laatsteDossier") or "") >= cutoff:

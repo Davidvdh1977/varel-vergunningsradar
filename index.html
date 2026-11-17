@@ -301,7 +301,7 @@ const GEO_CONCURRENCY = 6;
    Het relatieve pad werkt op GitHub Pages, de volledige URL ook als de tool als los bestand geopend wordt. */
 const KBO_DATA_URLS = ["kbo-data.json", "https://davidvdh1977.github.io/varel-vergunningsradar/kbo-data.json"];
 const KBO_IDB = "varel-vergunningsradar-kbo";
-const TOOL_VERSION = "2026-11-03.2";
+const TOOL_VERSION = "2026-11-17.1";
 
 const BASEMAPS = {
   grb: { url: "https://geo.api.vlaanderen.be/GRB/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=grb_bsk&STYLE=&FORMAT=image/png&TILEMATRIXSET=GoogleMapsVL&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}", attr: "GRB &copy; Digitaal Vlaanderen", maxZoom: 21 },
@@ -443,7 +443,10 @@ function centroid(g){
 async function fetchJSON(url){
   const r = await fetch(url, { headers: { "Accept":"application/json" } });
   const t = await r.text();
-  if (!r.ok) throw new Error(`HTTP ${r.status}: ${t.slice(0,200)}`);
+  if (!r.ok){
+    const ex = t.match(/<ows:ExceptionText>([\s\S]*?)<\/ows:ExceptionText>/);
+    throw new Error(`HTTP ${r.status}: ${ex ? "ExceptionReport: " + ex[1].replace(/&amp;quot;|&quot;/g, '"').replace(/\s+/g, " ").slice(0, 300) : t.slice(0, 200)}`);
+  }
   try { return JSON.parse(t); } catch(e){ throw new Error("Geen geldige JSON: " + t.slice(0,200)); }
 }
 
@@ -694,12 +697,21 @@ async function enrichAddresses(run){
 }
 
 function errorBox(failed){
+  const errs = failed.map(L => S.layers[L.id]?.error || "");
+  /* de server antwoordt wel, maar met een interne fout: storing bij Mercator zelf */
+  const serverDown = errs.some(e => /ExceptionReport|Unable to obtain connection|pg_hba|HTTP 5\d\d|HTTP 400/i.test(e));
+  const detail = failed.map((L, i) => {
+    const txt = errs[i].slice(0, 320);
+    return `${esc(L.label)}: ${esc(txt || "onbekend")}`;
+  }).join("<br>");
   return `<div class="msg err"><h3 style="margin-top:0">De gegevens konden niet worden opgehaald</h3>
-  <p>De open data van het Omgevingsloket (Mercator) reageert niet zoals verwacht. Mogelijke oorzaken:</p>
+  ${serverDown
+    ? `<p><b>Storing bij de Vlaamse overheid.</b> De open-dataserver van het Omgevingsloket (Mercator) is bereikbaar, maar geeft een interne fout terug. Aan je eigen internet of computer ligt het niet. Zulke storingen zijn meestal binnen enkele uren opgelost. Probeer het later opnieuw.</p>`
+    : `<p>De open data van het Omgevingsloket (Mercator) reageert niet zoals verwacht. Mogelijke oorzaken:</p>
   <ul><li>geen internetverbinding, of een bedrijfsnetwerk/firewall blokkeert <code>mercator.vlaanderen.be</code>;</li>
   <li>tijdelijk onderhoud bij de Vlaamse overheid (probeer later opnieuw);</li>
-  <li>de structuur van de dataset is gewijzigd.</li></ul>
-  <p class="note">${failed.map(L => `${esc(L.label)}: ${esc(S.layers[L.id]?.error || "onbekend")}`).join("<br>")}</p>
+  <li>de structuur van de dataset is gewijzigd.</li></ul>`}
+  <p class="note">Technische melding:<br>${detail}</p>
   <button class="btn primary" onclick="location.reload()">Opnieuw proberen</button></div>`;
 }
 function diagText(){
